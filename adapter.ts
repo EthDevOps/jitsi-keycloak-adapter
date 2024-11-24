@@ -385,11 +385,12 @@ async function monitoring_auth(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const qs = new URLSearchParams(url.search);
   const path = qs.get("path");
+  let roomName = "jitsimonitoring_aml0c2lt";
 
   console.log("Got a monitoring request for " + path);
 
   // check it's amonitoring request
-  if (!path?.startsWith("jitsimonitoring_aml0c2lt")) {
+  if (!path?.startsWith(roomName)) {
     console.log("Not a monitoring request. Aborting.")
     return new Response("not-monitoring", {
       status: STATUS_CODE.FORBIDDEN,
@@ -406,7 +407,7 @@ async function monitoring_auth(req: Request): Promise<Response> {
     "affiliation": "owner"
   }
 
-  const jwt = await generateJWT(userInfo, path);
+  const jwt = await generateJWT(userInfo, roomName);
 
   if (DEBUG) console.log(`monitoring token: ${jwt}`);
 
