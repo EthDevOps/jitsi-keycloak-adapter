@@ -9,7 +9,7 @@ export function createContext(userInfo: Record<string, unknown>) {
   const context = {
     user: {
       id: userInfo.sub,
-      name: userInfo.preferred_username || "",
+      name: userInfo.given_name || "",
       email: userInfo.email || "",
       lobby_bypass: userInfo.lobby_bypass || false,
       security_bypass: userInfo.security_bypass || false,
