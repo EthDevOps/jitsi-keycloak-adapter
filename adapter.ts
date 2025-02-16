@@ -298,7 +298,7 @@ function oidcRedirectForCode(req: Request, prompt: string): Response {
     `&hash=${encodeURIComponent(hash)}`;
   const target = `${KEYCLOAK_ORIGIN}/realms/${KEYCLOAK_REALM}` +
     `/protocol/openid-connect/auth?client_id=${KEYCLOAK_CLIENT_ID}` +
-    `&response_mode=${KEYCLOAK_MODE}&response_type=code&scope=openid` +
+    `&response_mode=${KEYCLOAK_MODE}&response_type=code&scope=openid%20email%20profile` +
     `&prompt=${prompt}&redirect_uri=https://${host}/static/oidc-adapter.html` +
     `?${encodeURIComponent(bundle)}`;
 
