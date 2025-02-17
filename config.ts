@@ -19,3 +19,4 @@ export const HOSTNAME = Deno.env.get("HOSTNAME") || "127.0.0.1";
 export const PORT = Number(Deno.env.get("PORT") || 9000);
 export const DEBUG = Deno.env.get("DEBUG") === "true";
 export const PERMISSIONS_FILE = Deno.env.get("PERMISSIONS_FILE") || false;
+export const ALLOWED_DOMAINS = (Deno.env.get("ALLOWED_DOMAINS") || "").split(",").filter(Boolean);

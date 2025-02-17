@@ -17,7 +17,8 @@ import {
   KEYCLOAK_ORIGIN_INTERNAL,
   KEYCLOAK_REALM,
   PORT,
-  PERMISSIONS_FILE
+  PERMISSIONS_FILE,
+  ALLOWED_DOMAINS
 } from "./config.ts";
 import { createContext } from "./context.ts";
 
@@ -96,6 +97,17 @@ async function generateJWT(
   } catch {
     return undefined;
   }
+}
+
+// -----------------------------------------------------------------------------
+// Check if the domain is allowed to moderate the room
+// -----------------------------------------------------------------------------
+function isAllowedDomain(email: string, allowedDomains: string[]): boolean {
+  if (!allowedDomains.length) return true; // If no domains specified, allow all
+  if (!email) return false;
+
+  const domain = email.split("@")[1]?.toLowerCase();
+  return allowedDomains.some(allowed => allowed.toLowerCase() === domain);
 }
 
 // -----------------------------------------------------------------------------
@@ -212,6 +224,12 @@ async function tokenize(req: Request): Promise<Response> {
   // get the user info from Keycloak by using the access token
   const userInfo = await getUserInfo(token);
   if (!userInfo) return unauthorized();
+
+  // Check email domain
+  if (!isAllowedDomain(userInfo["email"] as string, ALLOWED_DOMAINS)) {
+    console.log(`User ${userInfo["email"]} is not allowed to access the room`);
+    return unauthorized();
+  }
 
   // Enhance userinfo
   userInfo["lobby_bypass"] = true;
@@ -469,6 +487,7 @@ function main() {
   if (PERMISSIONS_FILE) {
     console.log(`PERMISSIONS_FILE: ${PERMISSIONS_FILE}`);
   }
+  console.log(`ALLOWED_DOMAINS: ${ALLOWED_DOMAINS}`);
 
   serve(handler, {
     hostname: HOSTNAME,
