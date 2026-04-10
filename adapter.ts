@@ -267,12 +267,11 @@ async function tokenize(req: Request): Promise<Response> {
         }
         else {
           console.log(`${userName} is not a moderator of ${roomName}`);
-          // reduce permissions
+          // reduce permissions - member affiliation, no moderator controls
+          // Keep lobby_bypass=true so authenticated users bypass lobby.
+          // Guests (no JWT) are held in lobby by Prosody's lobby module.
           userInfo["affiliation"] = "member";
-          if (lobby) {
-            userInfo["lobby_bypass"] = false;
-          }
-
+          userInfo["security_bypass"] = false;
         }
       } else {
         console.log(`room ${roomName} not found in permissions.`);
