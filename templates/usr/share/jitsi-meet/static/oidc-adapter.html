@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <script>
-      async function getToken(code, path, search, hash) {
+      async function getToken(code, path, search, hash, requireAuth) {
         try {
           const _path = encodeURIComponent(path);
           const _search = encodeURIComponent(search);
@@ -13,7 +13,8 @@
             `?code=${code}` +
             `&path=${_path}` +
             `&search=${_search}` +
-            `&hash=${_hash}`;
+            `&hash=${_hash}` +
+            (requireAuth ? `&requireAuth=1` : "");
           const res = await fetch(req, {
             headers: {
               "Accept": "application/json",
@@ -49,7 +50,7 @@
           `${hash?"#":""}${hash}`;
 
         if (!err) {
-          const token = await getToken(code, path, search, hash);
+          const token = await getToken(code, path, search, hash, requireAuth);
 
           if (token) {
             target = `${path}?` +

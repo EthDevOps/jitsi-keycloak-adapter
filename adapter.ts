@@ -144,12 +144,14 @@ async function getToken(
   path: string,
   search: string,
   hash: string,
+  requireAuth: boolean,
 ): Promise<string | undefined> {
   const url = `${KEYCLOAK_ORIGIN_INTERNAL}/realms/${KEYCLOAK_REALM}` +
     `/protocol/openid-connect/token`;
   const bundle = `path=${encodeURIComponent(path)}` +
     `&search=${encodeURIComponent(search)}` +
-    `&hash=${encodeURIComponent(hash)}`;
+    `&hash=${encodeURIComponent(hash)}` +
+    (requireAuth ? `&requireAuth=1` : "");
   const redirectURI = `https://${host}/static/oidc-adapter.html` +
     `?${bundle}`;
   const data = new URLSearchParams();
@@ -226,6 +228,7 @@ async function tokenize(req: Request): Promise<Response> {
   const path = qs.get("path") || "";
   const search = qs.get("search") || "";
   const hash = qs.get("hash") || "";
+  const requireAuth = qs.get("requireAuth") === "1";
 
   if (DEBUG) console.log(`tokenize code: ${code}`);
 
@@ -236,7 +239,7 @@ async function tokenize(req: Request): Promise<Response> {
   if (!code) return unauthorized();
 
   // get the access token from Keycloak if the short-term auth code is valid
-  const token = await getToken(host, code, path, search, hash);
+  const token = await getToken(host, code, path, search, hash, requireAuth);
   if (!token) {
     if (DEBUG) console.log(`Could not get Keycloak's access token`);
     return unauthorized();
