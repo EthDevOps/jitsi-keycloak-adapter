@@ -111,6 +111,27 @@ function isAllowedDomain(email: string, allowedDomains: string[]): boolean {
 }
 
 // -----------------------------------------------------------------------------
+// Look up a room's configuration in the permissions file. Returns null when
+// the file is not configured, missing, unparsable, or the room is not listed.
+// -----------------------------------------------------------------------------
+function getRoomConfig(roomName: string): any | null {
+  if (!PERMISSIONS_FILE) return null;
+  if (!fs.existsSync(PERMISSIONS_FILE)) {
+    console.error(`File not found: ${PERMISSIONS_FILE} - No permissions loaded.`);
+    return null;
+  }
+  try {
+    const rawData = fs.readFileSync(PERMISSIONS_FILE, 'utf-8');
+    const permissions = JSON.parse(rawData);
+    if (DEBUG) console.log(`Loaded ${permissions.length} permissions from ${PERMISSIONS_FILE}`);
+    return permissions.find((r: any) => r.room === roomName) || null;
+  } catch (e) {
+    console.error(`Error reading permissions file: ${e}`);
+    return null;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Get the access token from Keycloak by using the short-term auth code
 //
 // redirect_uri should be the same with URI which is set while getting the
@@ -239,46 +260,27 @@ async function tokenize(req: Request): Promise<Response> {
 
   // Loading permissions
   if (PERMISSIONS_FILE) {
-    if (fs.existsSync(PERMISSIONS_FILE)) {
-      let permissions: any = [];
-      const rawData = fs.readFileSync(PERMISSIONS_FILE, 'utf-8');
-      permissions = JSON.parse(rawData);
-      // now you can use the 'permissions' object
-      console.log(`Loaded ${permissions.length} permissions from ${PERMISSIONS_FILE}`)
+    const roomName = path.slice(1);
+    const room = getRoomConfig(roomName);
 
-      let roomName = path.slice(1);
-
-      let room = permissions.find(r => r.room === roomName);
-
-      if (room) {
-        // Check for lobby settings
-        const lobby = room.useLobby
-
-
-
-        const userName = userInfo["email"]
-        console.log(`Found config for room ${roomName}. Checking for user ${userName}`)
-        tokenRoom = roomName;
-        // check if the user is in the moderator list
-        if (room.moderators.includes(userName)) {
-          console.log(`${userName} is a moderator of ${roomName}`);
-          // make use owner
-          userInfo["affiliation"] = "owner";
-        }
-        else {
-          console.log(`${userName} is not a moderator of ${roomName}`);
-          // reduce permissions - member affiliation, no moderator controls
-          // Keep lobby_bypass=true so authenticated users bypass lobby.
-          // Guests (no JWT) are held in lobby by Prosody's lobby module.
-          userInfo["affiliation"] = "member";
-          userInfo["security_bypass"] = false;
-        }
+    if (room) {
+      const userName = userInfo["email"];
+      console.log(`Found config for room ${roomName}. Checking for user ${userName}`);
+      tokenRoom = roomName;
+      // check if the user is in the moderator list
+      if (room.moderators.includes(userName)) {
+        console.log(`${userName} is a moderator of ${roomName}`);
+        userInfo["affiliation"] = "owner";
       } else {
-        console.log(`room ${roomName} not found in permissions.`);
+        console.log(`${userName} is not a moderator of ${roomName}`);
+        // reduce permissions - member affiliation, no moderator controls.
+        // Keep lobby_bypass=true so authenticated users bypass lobby.
+        // Guests (no JWT) are held in lobby by Prosody's lobby module.
+        userInfo["affiliation"] = "member";
+        userInfo["security_bypass"] = false;
       }
-
     } else {
-      console.error(`File not found: ${PERMISSIONS_FILE} - No permissions loaded.`);
+      console.log(`room ${path.slice(1)} not found in permissions.`);
     }
   }
 
@@ -299,7 +301,7 @@ async function tokenize(req: Request): Promise<Response> {
 // If successful, Keycloak will redirect the request to oidc-adapter.html
 // (redirect_uri) with a short-term authorization code.
 // -----------------------------------------------------------------------------
-function oidcRedirectForCode(req: Request, prompt: string): Response {
+function oidcRedirectForCode(req: Request, prompt: string, requireAuth: boolean = false): Response {
   const host = req.headers.get("host");
   const url = new URL(req.url);
   const qs = new URLSearchParams(url.search);
@@ -312,7 +314,8 @@ function oidcRedirectForCode(req: Request, prompt: string): Response {
 
   const bundle = `path=${encodeURIComponent(path)}` +
     `&search=${encodeURIComponent(search)}` +
-    `&hash=${encodeURIComponent(hash)}`;
+    `&hash=${encodeURIComponent(hash)}` +
+    (requireAuth ? `&requireAuth=1` : "");
   const target = `${KEYCLOAK_ORIGIN}/realms/${KEYCLOAK_REALM}` +
     `/protocol/openid-connect/auth?client_id=${KEYCLOAK_CLIENT_ID}` +
     `&response_mode=${KEYCLOAK_MODE}&response_type=code&scope=openid%20email%20profile` +
@@ -331,10 +334,26 @@ function oidcRedirectForCode(req: Request, prompt: string): Response {
 }
 
 // -----------------------------------------------------------------------------
+// Resolve the room name from the incoming request's `path` query parameter and
+// return whether the room is configured as authentication-required.
+// -----------------------------------------------------------------------------
+function roomRequiresAuth(req: Request): boolean {
+  const url = new URL(req.url);
+  const qs = new URLSearchParams(url.search);
+  const path = qs.get("path") || "";
+  const roomName = path.slice(1);
+  const room = getRoomConfig(roomName);
+  return !!room?.requireAuthentication;
+}
+
+// -----------------------------------------------------------------------------
 // Redirect to Keycloak auth service to get a short-term authorization code.
-// Don't ask for a credential if auth fails
+// Silent SSO for unrestricted rooms; force a login for auth-required rooms.
 // -----------------------------------------------------------------------------
 function redirect(req: Request): Response {
+  if (roomRequiresAuth(req)) {
+    return oidcRedirectForCode(req, "login", true);
+  }
   return oidcRedirectForCode(req, "none");
 }
 
@@ -343,7 +362,7 @@ function redirect(req: Request): Response {
 // Ask for a credential if auth fails
 // -----------------------------------------------------------------------------
 function auth(req: Request): Response {
-  return oidcRedirectForCode(req, "login");
+  return oidcRedirectForCode(req, "login", roomRequiresAuth(req));
 }
 
 function generateGUID() {

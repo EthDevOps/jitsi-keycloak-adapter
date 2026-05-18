@@ -26,6 +26,13 @@
         }
       }
 
+      function loginRequiredUrl(path, search, hash) {
+        return `/static/oidc-login-required.html` +
+          `?path=${encodeURIComponent(path)}` +
+          `&search=${encodeURIComponent(search)}` +
+          `&hash=${encodeURIComponent(hash)}`;
+      }
+
       async function adapter() {
         const qs = new URLSearchParams(window.location.search);
         const err = qs.get("error");
@@ -34,8 +41,9 @@
         const path = qs.get("path");
         const search = qs.get("search") || "";
         const hash = qs.get("hash") || "";
+        const requireAuth = qs.get("requireAuth") === "1";
 
-        let target = `${path}?` + 
+        let target = `${path}?` +
           `${search}${search?"&":""}` +
           `oidc=unauthorized` +
           `${hash?"#":""}${hash}`;
@@ -44,17 +52,21 @@
           const token = await getToken(code, path, search, hash);
 
           if (token) {
-            target = `${path}?` + 
+            target = `${path}?` +
               `${search}${search?"&":""}` +
               `oidc=authorized` +
               `&jwt=${token}` +
               `${hash?"#":""}${hash}`;
+          } else if (requireAuth) {
+            target = loginRequiredUrl(path, search, hash);
           } else {
-            target = `${path}?` + 
+            target = `${path}?` +
               `${search}${search?"&":""}` +
               `oidc=failed` +
               `${hash?"#":""}${hash}`;
           }
+        } else if (requireAuth) {
+          target = loginRequiredUrl(path, search, hash);
         }
 
         window.location = target;
