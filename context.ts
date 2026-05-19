@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------------
 
 export function createContext(userInfo: Record<string, unknown>) {
+  const isOwner = userInfo.affiliation === "owner";
   const context = {
     user: {
       id: userInfo.sub,
@@ -14,6 +15,9 @@ export function createContext(userInfo: Record<string, unknown>) {
       lobby_bypass: userInfo.lobby_bypass || false,
       security_bypass: userInfo.security_bypass || false,
       affiliation: userInfo.affiliation || "member",
+      // Surfaces moderator status to the Jitsi mobile app, which reads this
+      // field rather than the Prosody-side affiliation.
+      moderator: isOwner ? "true" : "false",
     },
   };
 

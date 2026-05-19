@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Joining meeting...</title>
     <script>
       async function getToken(code, path, search, hash, requireAuth) {
         try {
@@ -34,6 +36,48 @@
           `&hash=${encodeURIComponent(hash)}`;
       }
 
+      function buildWebUrl(path, search, hash, token) {
+        return `${path}?` +
+          `${search}${search ? "&" : ""}` +
+          `oidc=authorized&jwt=${token}` +
+          `${hash ? "#" : ""}${hash}`;
+      }
+
+      function isAndroid(ua) {
+        return /android/.test(ua);
+      }
+
+      function isIOS(ua) {
+        if (/iphone|ipad|ipod/.test(ua)) return true;
+        // iPadOS 13+ Safari reports a macOS UA; distinguish via touch points.
+        if (/macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+        return false;
+      }
+
+      function navigateToRoom(path, search, hash, token) {
+        const host = window.location.host;
+        const ua = navigator.userAgent.toLowerCase();
+        const webUrl = buildWebUrl(path, search, hash, token);
+        const mobileQuery = `?jwt=${token}` + (search ? `&${search}` : "");
+
+        document.getElementById("fallback").href = webUrl;
+
+        if (isAndroid(ua)) {
+          const fallback = encodeURIComponent(`https://${host}${webUrl}`);
+          window.location =
+            `intent://${host}${path}${mobileQuery}` +
+            `#Intent;scheme=org.jitsi.meet;package=org.jitsi.meet;` +
+            `S.browser_fallback_url=${fallback};end`;
+        } else if (isIOS(ua)) {
+          const hashSuffix = hash ? `#${hash}` : "";
+          window.location =
+            `org.jitsi.meet://${host}${path}${mobileQuery}${hashSuffix}`;
+          setTimeout(function () { window.location = webUrl; }, 1500);
+        } else {
+          window.location = webUrl;
+        }
+      }
+
       async function adapter() {
         const qs = new URLSearchParams(window.location.search);
         const err = qs.get("error");
@@ -44,37 +88,38 @@
         const hash = qs.get("hash") || "";
         const requireAuth = qs.get("requireAuth") === "1";
 
-        let target = `${path}?` +
-          `${search}${search?"&":""}` +
-          `oidc=unauthorized` +
-          `${hash?"#":""}${hash}`;
-
         if (!err) {
           const token = await getToken(code, path, search, hash, requireAuth);
 
           if (token) {
-            target = `${path}?` +
-              `${search}${search?"&":""}` +
-              `oidc=authorized` +
-              `&jwt=${token}` +
-              `${hash?"#":""}${hash}`;
+            navigateToRoom(path, search, hash, token);
+            return;
           } else if (requireAuth) {
-            target = loginRequiredUrl(path, search, hash);
+            window.location = loginRequiredUrl(path, search, hash);
+            return;
           } else {
-            target = `${path}?` +
-              `${search}${search?"&":""}` +
+            window.location = `${path}?` +
+              `${search}${search ? "&" : ""}` +
               `oidc=failed` +
-              `${hash?"#":""}${hash}`;
+              `${hash ? "#" : ""}${hash}`;
+            return;
           }
-        } else if (requireAuth) {
-          target = loginRequiredUrl(path, search, hash);
         }
 
-        window.location = target;
+        if (requireAuth) {
+          window.location = loginRequiredUrl(path, search, hash);
+          return;
+        }
+
+        window.location = `${path}?` +
+          `${search}${search ? "&" : ""}` +
+          `oidc=unauthorized` +
+          `${hash ? "#" : ""}${hash}`;
       }
     </script>
   </head>
   <body onload="adapter()">
-  adapting...
+    <p id="status">Joining meeting...</p>
+    <a id="fallback" href="#">Click here if not redirected</a>
   </body>
 </html>

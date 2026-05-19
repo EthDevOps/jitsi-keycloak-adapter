@@ -90,6 +90,7 @@ async function generateJWT(
       iat: getNumericDate(0),
       nbf: getNumericDate(0),
       exp: getNumericDate(JWT_EXP_SECOND),
+      moderator: userInfo.affiliation === "owner",
       context: createContext(userInfo),
     };
 
