@@ -369,6 +369,36 @@ function auth(req: Request): Response {
   return oidcRedirectForCode(req, "login", roomRequiresAuth(req));
 }
 
+// -----------------------------------------------------------------------------
+// Handle the "Continue as guest" button. If the target room is configured with
+// requireAuthentication, send the user to the sign-in-required page instead of
+// letting them slip past the adapter via ?oidc=unauthorized.
+// -----------------------------------------------------------------------------
+function guest(req: Request): Response {
+  const url = new URL(req.url);
+  const qs = new URLSearchParams(url.search);
+  const path = qs.get("path") || "/";
+  const search = qs.get("search") || "";
+  const hash = qs.get("hash") || "";
+
+  if (roomRequiresAuth(req)) {
+    const target = `/static/oidc-login-required.html` +
+      `?path=${encodeURIComponent(path)}` +
+      `&search=${encodeURIComponent(search)}` +
+      `&hash=${encodeURIComponent(hash)}`;
+    return Response.redirect(`https://${req.headers.get("host")}${target}`,
+      STATUS_CODE.Found);
+  }
+
+  // Unrestricted room — proceed as guest. Append oidc=unauthorized so nginx
+  // serves the Jitsi app directly without bouncing through the redirect page.
+  const sep = search ? "&" : "";
+  const target = `${path}?${search}${sep}oidc=unauthorized` +
+    (hash ? `#${hash}` : "");
+  return Response.redirect(`https://${req.headers.get("host")}${target}`,
+    STATUS_CODE.Found);
+}
+
 function generateGUID() {
   function s4() {
     return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
@@ -484,6 +514,8 @@ async function handler(req: Request): Promise<Response> {
     return await tokenize(req);
   } else if (path === "/oidc/auth") {
     return await auth(req);
+  } else if (path === "/oidc/guest") {
+    return guest(req);
   } else {
     return notFound();
   }
