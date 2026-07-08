@@ -14,6 +14,9 @@ export const JWT_APP_ID = Deno.env.get("JWT_APP_ID") || "myappid";
 export const JWT_APP_SECRET = Deno.env.get("JWT_APP_SECRET") || "myappsecret";
 export const JWT_EXP_SECOND = Number(Deno.env.get("JWT_EXP_SECOND") || 3600);
 
+// recorder (jibri) gate. Empty means the /oidc/recorder endpoint is disabled.
+export const RECORDER_SECRET = Deno.env.get("RECORDER_SECRET") || "";
+
 // adapter
 export const HOSTNAME = Deno.env.get("HOSTNAME") || "127.0.0.1";
 export const PORT = Number(Deno.env.get("PORT") || 9000);

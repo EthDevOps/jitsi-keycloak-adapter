@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import { serve } from "https://deno.land/std@0.211.0/http/server.ts";
 import { STATUS_CODE } from "https://deno.land/std@0.211.0/http/status.ts";
+import { timingSafeEqual } from "https://deno.land/std@0.211.0/crypto/timing_safe_equal.ts";
 import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.1/mod.ts";
 import { Algorithm } from "https://deno.land/x/djwt@v3.0.1/algorithm.ts";
 import {
@@ -18,7 +19,8 @@ import {
   KEYCLOAK_REALM,
   PORT,
   PERMISSIONS_FILE,
-  ALLOWED_DOMAINS
+  ALLOWED_DOMAINS,
+  RECORDER_SECRET
 } from "./config.ts";
 import { createContext } from "./context.ts";
 
@@ -492,6 +494,49 @@ async function monitoring_auth(req: Request): Promise<Response> {
 }
 
 // -----------------------------------------------------------------------------
+// Gate for the recorder (jibri). Jibri's page URL natively carries the recorder
+// XMPP password (appData.localStorageContent -> xmpp_password_override); the
+// redirect page sends it here in the X-Recorder-Token header. If it matches
+// RECORDER_SECRET, hand back a passthrough URL so nginx serves the app; jibri
+// then authenticates to prosody via the hidden recorder domain, so no JWT is
+// minted here. Responds with JSON instead of a 302 because the caller is a
+// fetch() that must navigate itself rather than follow the redirect.
+// -----------------------------------------------------------------------------
+function recorder_auth(req: Request): Response {
+  const url = new URL(req.url);
+  const qs = new URLSearchParams(url.search);
+  const path = qs.get("path") || "/";
+  const search = qs.get("search") || "";
+  const hash = qs.get("hash") || "";
+  const token = req.headers.get("x-recorder-token") || "";
+
+  console.log("Got a recorder request for " + path);
+
+  if (!RECORDER_SECRET || !isValidRecorderToken(token)) {
+    console.log("Recorder token invalid or RECORDER_SECRET unset. Aborting.");
+    return new Response("not-recorder", {
+      status: STATUS_CODE.Forbidden,
+    });
+  }
+
+  const sep = search ? "&" : "";
+  const target = `${path}?${search}${sep}oidc=authenticated` +
+    (hash ? `#${hash}` : "");
+  return new Response(JSON.stringify({ target }), {
+    status: STATUS_CODE.OK,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function isValidRecorderToken(token: string): boolean {
+  const encoder = new TextEncoder();
+  const a = encoder.encode(token);
+  const b = encoder.encode(RECORDER_SECRET);
+  if (a.byteLength !== b.byteLength) return false;
+  return timingSafeEqual(a, b);
+}
+
+// -----------------------------------------------------------------------------
 // handler
 // -----------------------------------------------------------------------------
 async function handler(req: Request): Promise<Response> {
@@ -516,6 +561,8 @@ async function handler(req: Request): Promise<Response> {
     return await auth(req);
   } else if (path === "/oidc/guest") {
     return guest(req);
+  } else if (path === "/oidc/recorder") {
+    return recorder_auth(req);
   } else {
     return notFound();
   }
@@ -542,6 +589,11 @@ function main() {
     console.log(`PERMISSIONS_FILE: ${PERMISSIONS_FILE}`);
   }
   console.log(`ALLOWED_DOMAINS: ${ALLOWED_DOMAINS}`);
+  console.log(
+    `RECORDER_SECRET: ${
+      RECORDER_SECRET ? "*** masked ***" : "(unset - /oidc/recorder disabled)"
+    }`,
+  );
 
   serve(handler, {
     hostname: HOSTNAME,
